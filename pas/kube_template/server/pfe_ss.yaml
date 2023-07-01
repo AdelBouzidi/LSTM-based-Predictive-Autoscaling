@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pas-ss
+spec:
+  serviceName: "pas"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pas
+  template:
+    metadata:
+      labels:
+        app: pas
+    spec:
+      containers:
+      - name: pas
+        image: docker.io/library/server:pfe
+        ports:
+        - containerPort: 80
+          name: web
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "1000m"          

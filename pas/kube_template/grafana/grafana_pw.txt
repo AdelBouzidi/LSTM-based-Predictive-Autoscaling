@@ -1,0 +1,2 @@
+kubectl exec -ti -n grafana <pod> /bin/bash # get a shell to the pod / container running grafana
+bash-5.0$ grafana-cli admin reset-admin-password $GF_SECURITY_ADMIN_PASSWORD

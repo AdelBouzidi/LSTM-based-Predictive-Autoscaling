@@ -1,0 +1,22 @@
+FROM python:3.6-slim
+
+RUN apt-get update 
+                   
+
+RUN apt-get -y install \
+    python3-dev \
+    build-essential \
+    iputils-ping \
+    net-tools \
+    vim
+
+WORKDIR /lstm
+
+
+COPY requirements.txt /lstm/requirements.txt
+RUN pip3 install -r requirements.txt --src /usr/local/src
+
+
+
+CMD [ "python3", "-u",  "build_model.py" ]
+#CMD [ "/bin/bash", "-ce", "tail -f /dev/null" ]

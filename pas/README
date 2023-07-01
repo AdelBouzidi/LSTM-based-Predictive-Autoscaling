@@ -1,0 +1,169 @@
+procédure de déploiement de la plateforme d'autoscaling prédictif (pas):
+
+A - Activation du Kubernetes Metrics Server
+
+Il corresponds a un ensemble de PODs qui vont être exécutés sur le namespace "kube-system", et qui permet de collecter des statistiques sur l'ensemble de PODs exécutant sur le namespace "default", tel que utilisation du CPU, Mémoire.
+
+Pour l'installer, merci de suivre les étapes:
+
+1 - kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.4.1/components.yaml
+2 - kubectl edit deployments.apps -n kube-system metrics-server
+    ==> Ajouter "- --kubelet-insecure-tls=true" au-dessous de "- --secure-port=4443"
+    ==> Ajouter " - --metric-resolution=5s" au-dessous de "- --kubelet-insecure-tls=true"
+    ==> 5s représente l'intervalle de monitoring
+    ==> sauvegarder avec "echap", ":wp!"
+3 - essaye la commande # kubectl top pods   ==> pour voir l'utilisation des ressources (CPU, RAM)
+4 - essaye la commande # watch kubectl top pods   ==> pour voir l'utilisation des ressources (CPU, RAM) en temps réel
+
+
+B - Déploiement du POD sur lequel on va appliquer le mécanisme d'autoscaling prédictif: (pas-ss-0)
+
+1 - comme le système "pas" va exercer un stress sur le CPU, on doit construire un container, qui va être exécuté sur un POD (pas-ss-0), et qui contient le programme "stress-ng" déjà installé. Pour ça, on a créé un fichier dockerfile contenant les packages nécessaires, dans le répertoire: "/home/master/pfe/pas/dockerfiles/server"
+2 - exécuter la commande: # sudo docker build -t server:pfe . ==> il va builder une image "server:pfe" à partir du fichier "dockerfile" existant dans le répertoire courant "."
+3 - sauvegarder l'image créée: # sudo save -o server_pfe.tar server:pfe
+4 - copier l'image dans la machine worker: # scp server_pfe.tar worker@10.0.2.5:/home/worker/server/
+5 - comme le cluster Kubernetes installé utilise "containerd" comme gestionnaire de container, on doit uploader l'image à "containerd" dans le worker: # sudo ctr -a /var/run/containerd/containerd.sock --namespace k8s.io image import server_pfe.tar
+    ==> pour voir c'est quoi le container-runtime (docker, containerd), exécuter la commande: # kubectl get nodes -o wide
+6 - Dans le Master, aller au répertoire: "/home/master/pfe/pas/kube_template/server"
+7 - exécuter la commande: # kubectl apply -f pfe_ss.yaml
+    ==> cette commande va créer un déploiement qui va assurer le fonctionnement du pod "pas-ss-0", et qui par la suite assure le scaling de ce POD, c'est à dire l'ajout ou la suppression d'un replicas
+
+
+C - Installation du HELM
+
+Comme un déploiement d'une application sur Kubernetes consiste à installer plusieurs composants séparés, HELM permet, via une seule commande d'installer une application, ce qui est par exemple l'équivalent de apt-get sur Linux ...
+Pour installer Helm, Merci de voir le lien: https://helm.sh/fr/docs/intro/install/
+
+D - Déploiement de Influxdb
+
+1 - Aller au répertoire: "/home/master/pfe/pas/kube_template/influxdb"
+2 - le répertoire influxdb représente HELM chart,
+3 - dans le répertoire: "/home/master/pfe/pas/kube_template/influxdb/volumes", il y a 2 fichiers: influxdb-pv.yaml, influxdb-pvc.yaml. Le premier consiste à créer un volume ou espace disque dans: "/mnt/influxdb" dans la machine: "worker". Le 2eme consiste à mapper le pod influxdb au ce volume
+4 - installer le persistent volume via: kubectl apply -f influxdb-pv.yaml
+5 - installer le persistent volume claim via: kubectl apply -f influxdb-pvc.yaml
+6 - Installer influxdb chart via la commande: helm install influxdb influxdb
+7 - vérifier si l'installation est correcte: # watch kubectl get all
+
+E - Déploiement de Grafana
+
+
+1 - Aller au répertoire: "/home/master/pfe/pas/kube_template/grafana"
+2 - dans le répertoire: "/home/master/pfe/pas/kube_template/grafana", il y a 2 fichiers: grafana-pv.yaml, grafana-pvc.yaml. Le premier consiste à créer un volume ou espace disque dans: "/mnt/grafana" dans la machine: "worker". Le 2eme consiste à mapper le pod grafana au ce volume
+3 - installer le persistent volume via: kubectl apply -f grafana-pv.yaml
+4 - installer le persistent volume claim via: kubectl apply -f grafana-pvc.yaml
+5 - deployer grafana via: # kubectl apply -f grafana.yaml
+6 - vérifier si l'installation est correcte: # watch kubectl get all
+
+F - installation des déférents packages pour python3
+
+1  - sudo apt install python3-pip
+2  - pip3 install numpy
+3  - pip3 install pandas
+4  - pip3 install sklearn
+5  - pip3 install tensorflow
+6  - pip3 install keras
+7  - pip3 install influxdb
+8  - pip3 install paramiko
+9  - pip3 install matplotlib
+10 - pip3 install cpu_load_generator
+
+
+G - Aller à Influxdb CLI
+
+1 - pour récupérer le nom de influxdb pod, exécuter la commande: kubectl get all
+2 - aller à influxdb CLI via: # kubectl exec -it influxdb-0 bash
+3 - créer la base de données "pas": # create database pas
+4 - # show databases
+5 - # use pas
+6 - show measurements
+
+H - Récupération de l'adresse IP du service influxdb
+
+1 - l'adresse ip du serveur influxdb corresponde à l'adresse du service: "influxdb",
+    ==> qu'on peut la trouver via: kubectl get all
+NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)             AGE
+service/influxdb     ClusterIP      10.111.219.45   <none>        8086/TCP,8088/TCP   3d19h
+
+
+I - Charger le measurement "cpu_usage_training_model":
+    ==> modifier l'adresse ip du serveur influxdb: "10.111.219.45"
+    ==> python3 load_cpu_usage_training_model.py (pour lancer le script)
+    ==> ce script va insérer toutes les données d'utilisation de CPU, à partir du fichier CSV: "cpu_usage_training_model.csv"
+        vers le measurement: "cpu_usage_training_model"
+    ==> connecter au CLI influxdb
+    ==> # use pas
+    ==> # show measurements
+    ==> # select * from "cpu_usage_training_model"
+
+J - Construction du build_model image
+
+build_model permet de générer périodiquement le modèle: "lstm_model.h5", ce qui consomme des ressources s'il sera exécuter sur le "master" node, de ce fait il est préférable de l'exécuter sur le worker dans un POD orchestré par Kubernetes.
+
+1 - aller dans le répertoire: /mnt/bm dans la machine worker
+2 - dedans il y a les 4 fichiers: build_model.py, dockerfile, lstm_model.h5, requirements.txt.
+3 - dans le worker, exécuter la commande: # sudo docker build -t bm:pfe .
+    ==> cette commande va créer une image: "bm:pfe"
+4 - sauvegarder l'image crée: # sudo docker save -o bm_pfe.tar bm:pfe
+
+5 - importer l'image à "containerd": sudo ctr -a /var/run/containerd/containerd.sock --namespace k8s.io image import bm_pfe.tar
+
+6 - notes bien que le container qui va être crée à partir de cette image, il va lancer le script build_model.py comme point d'entrer. Ce script génère le modèle: "lstm_model.h5" dans un volume, qui va être crée par la suite dans la machine worker /mnt/bm. Ensuite, il envoie automatiquement "lstm_model.h5" au répertoire: "/home/master/pfe/pas" dans la machine "master"
+
+7 - installation du persistent volume : cd /home/master/pfe/pas/kube_template/build_model 
+    ==> kubectl apply -f bm-pv.yaml 
+8 - installation du persistent volume claim : cd /home/master/pfe/pas/kube_template/build_model 
+    ==> kubectl apply -f bm-pvc.yaml 
+9 - installation du build model deployment : kubectl apply -f bm_ss.yaml
+    
+
+K - Déploiement de build_model POD
+
+1 - Aller au répertoire: "/home/master/pfe/pas/kube_template/build_model"
+2 - installer le persistent volume via: kubectl apply -f bm-pv.yaml
+3 - installer le persistent volume claim via: kubectl apply -f bm-pvc.yaml
+4 - installer build_model via: # kubectl apply -f bm_ss.yaml
+5 - Verifier l’installation via: watch kubectl get all
+6 - vérifier si le script "build_model.py" est en train de créer du modèle: "lstm_model.h5" et l'envoyer au master via:
+    ==> # kubectl logs --follow bm-ss-0
+
+
+L - Vérification de la plateforme:
+
+avant de lancer le système "pas", les 4 PODs (bm-ss-0, grafana-xxx, influxdb-0, pas-ss-0) doivent avoir l'état: "running":
+NAME                         READY   STATUS    RESTARTS        AGE
+pod/bm-ss-0                  1/1     Running   1               20h
+pod/grafana-5bdbb749-kddbw   1/1     Running   2               2d4h
+pod/influxdb-0               1/1     Running   2               2d4h
+pod/pas-ss-0                 1/1     Running   2               2d4h
+
+
+M - Lancement du script: "monitor_cpu.py" , "autoscaler.py" 
+
+1 - # python3 monitor_cpu.py
+    ==> modifier l'adresse ip du serveur influxdb: "10.111.219.45"
+    ==> ce script va connecter à influxdb, pour collecter les données à partir de: "cpu_usage_training_model"
+    ==> ensuite, via ces données, ce script va exercer un stress sur le CPU du POD: "pas-ss-0",
+    ==> ensuite, il monitore le CPU via : # kubectl top pods | grep pas-ss-0
+    ==> le résultat du monitoring va être sauvegardée dans le measurement: "monitored_cpu_usage" dans "influxdb"
+2 - le POD: "bm-ss-0" est en train de créer le modèle: "lstm_model.h5" périodiquement et le met dans le répertoire: "/home/master/pfe/pas"
+3 - # python3 autoscaler.py
+    ==> modifier l'adresse ip du serveur influxdb: "10.111.219.45"
+    ==> ce script va connecter à influxdb, pour collecter les données à partir de: "monitored_cpu_usage"
+    ==> il prend aussi comme entrée, le modèle entrainé: "lstm_model.h5"
+    ==> à partir des données collectées, il va construire les vecteur d'entrée du modèle sauvegardé lstm: "lstm_model.h5"
+    ==> ensuite, via le modèle sauvegardé et le vecteur d'entré, il produit le vecteur prédit: yhat
+    ==> il teste selon le seuil d'autoscaling: "85%", si une valeur dans yhat la dépasse, il déclenche l'autoscaling via:
+    ==> # kubectl scale sts pas-ss --replicas="nombre_de_replicas"
+    ==> il sauvegarde les 2 vecteur: input_x, yhat dans influxdb dans les 2 measurement: "cpu_usage_current", "cpu_usage_predicted"
+
+
+N - Lancement de Grafana
+
+1 - Ajouter une source de données vers la base de données influxdb: "pas": "10.111.219.45"
+2 - URL: http://10.111.219.45:8086
+3 - database: "pas", user: "admin", pw: "admin"
+4 - importer le Dashboard déjà enregistré (fichier json)
+5 - le Dashboard va afficher dans une figure, l'utilisation actuelle et prédictive, qui sont dans les 2 measurements
+    ==> "cpu_usage_current", "cpu_usage_predicted" dans "influxdb", et qui sont remplis au fur et à mesure en exécutant
+    ==> le script "autoscaler.py"
+

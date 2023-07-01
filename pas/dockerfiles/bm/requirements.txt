@@ -1,0 +1,7 @@
+numpy
+pandas
+sklearn
+tensorflow
+keras
+influxdb
+paramiko

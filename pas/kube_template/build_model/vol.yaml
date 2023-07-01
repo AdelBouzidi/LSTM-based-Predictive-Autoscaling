@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: bm-ss
+spec:
+  serviceName: "bm"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bm
+  template:
+    metadata:
+      labels:
+        app: bm
+    spec:
+      containers:
+      - name: bm
+        image: docker.io/library/build_model:pfe
+        ports:
+        volumeMounts:
+        - name: bm
+          mountPath: /lstm
+  volumeClaimTemplates:
+  - metadata:
+      name: bm
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 15Gi

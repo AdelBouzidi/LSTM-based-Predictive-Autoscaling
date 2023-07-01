@@ -1,0 +1,6 @@
+from ubuntu:latest
+
+RUN apt-get update && apt-get install -y iputils-ping && apt-get install -y net-tools \
+    && apt-get install -y stress-ng
+
+CMD [ "/bin/bash", "-ce", "tail -f /dev/null" ]

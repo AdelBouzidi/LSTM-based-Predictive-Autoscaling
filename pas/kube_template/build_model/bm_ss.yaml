@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: bm-ss
+spec:
+  serviceName: "bm"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bm
+  template:
+    metadata:
+      labels:
+        app: bm
+    spec:
+      volumes:
+      - name: bm
+        hostPath:
+          path: /mnt/bm
+          type: Directory
+      containers:
+      - name: bm
+        image: docker.io/library/bm:pfe
+        volumeMounts:
+        - mountPath: "/lstm"
+          name: bm
